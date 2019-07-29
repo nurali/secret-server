@@ -10,15 +10,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/nurali/secret-server/secret-service/pkg/app"
-	uuid "github.com/satori/go.uuid"
-
 	"github.com/gorilla/mux"
-
-	"github.com/stretchr/testify/require"
-
+	_ "github.com/lib/pq"
+	"github.com/nurali/secret-server/secret-service/pkg/app"
+	"github.com/nurali/secret-server/secret-service/pkg/config"
+	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
-
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -28,9 +26,20 @@ type SecretCtrlSuite struct {
 }
 
 func TestSecretCtrl(t *testing.T) {
-	s := &SecretCtrlSuite{
-		Router: app.Router(),
+	cfg := config.New()
+
+	db, err := app.OpenDB(cfg)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if err := app.SetupDB(db); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &SecretCtrlSuite{
+		Router: app.Router(db),
+	}
+
 	suite.Run(t, s)
 }
 

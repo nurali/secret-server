@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
+
 	"github.com/gorilla/mux"
+	"github.com/jinzhu/gorm"
 
 	"github.com/nurali/secret-server/secret-service/pkg/model"
-	uuid "github.com/satori/go.uuid"
 )
 
 type SecretCtrl interface {
@@ -19,7 +21,7 @@ type SecretCtrl interface {
 }
 
 type secretCtrl struct {
-	secretStore map[string]*model.Secret
+	repo model.Repository
 }
 
 type secretReq struct {
@@ -36,17 +38,17 @@ type secretResp struct {
 	RemainingViews int    `json:"remainingViews"`
 }
 
-func NewSecretCtrl() SecretCtrl {
+func NewSecretCtrl(db *gorm.DB) SecretCtrl {
 	return &secretCtrl{
-		secretStore: make(map[string]*model.Secret),
+		repo: &model.GormRepository{DB: db},
 	}
 }
 
 func ToSecret(secretIn *secretReq) *model.Secret {
-	hash := uuid.NewV4().String()
+	// hash := uuid.NewV4().String()
 	now := time.Now()
 	secret := &model.Secret{
-		Hash:           hash,
+		// Hash:           hash,
 		SecretText:     secretIn.Secret,
 		CreatedAt:      now,
 		ExpiresAt:      now.Add(time.Minute * time.Duration(secretIn.ExpireAfter)),
@@ -57,7 +59,7 @@ func ToSecret(secretIn *secretReq) *model.Secret {
 
 func ToSecretResp(secret *model.Secret) *secretResp {
 	res := &secretResp{
-		Hash:           secret.Hash,
+		Hash:           secret.Hash.String(),
 		SecretText:     secret.SecretText,
 		CreatedAt:      secret.CreatedAt.Format(time.RFC3339),
 		ExpiresAt:      secret.ExpiresAt.Format(time.RFC3339),
@@ -85,7 +87,11 @@ func (c *secretCtrl) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newSecret := ToSecret(secretIn)
-	c.secretStore[newSecret.Hash] = newSecret
+	newSecret, err = c.repo.Create(newSecret)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	secretOut := ToSecretResp(newSecret)
 	content, err := encode(secretOut)
@@ -97,11 +103,16 @@ func (c *secretCtrl) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *secretCtrl) Show(w http.ResponseWriter, r *http.Request) {
-	hash := mux.Vars(r)["hash"]
+	var hash uuid.UUID
+	var err error
+	if hash, err = uuid.FromString(mux.Vars(r)["hash"]); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	secret := c.secretStore[hash]
-	if secret == nil {
-		http.Error(w, "secret not found", http.StatusNotFound)
+	secret, err := c.repo.Load(hash)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
