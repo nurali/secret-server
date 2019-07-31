@@ -119,6 +119,15 @@ func (c *secretCtrl) Show(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	defer func() {
+		if err != nil {
+			log.Debugf("unread secret due to error, %v", err)
+			_, unreadErr := c.store.UnreadOnce(hash)
+			if unreadErr != nil {
+				log.Error(unreadErr)
+			}
+		}
+	}()
 
 	secretOut := ToSecretResp(secret)
 	content, err := encode(secretOut)
