@@ -7,6 +7,7 @@ require (
 	github.com/jinzhu/gorm v1.9.10
 	github.com/lib/pq v1.2.0
 	github.com/pkg/errors v0.8.0
+	github.com/prometheus/client_golang v0.9.3
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/viper v1.4.0

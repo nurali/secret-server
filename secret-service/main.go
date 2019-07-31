@@ -5,13 +5,13 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/jinzhu/gorm"
-	"github.com/nurali/secret-server/secret-service/pkg/app"
-
 	"github.com/gorilla/mux"
-
+	"github.com/jinzhu/gorm"
 	_ "github.com/lib/pq"
+	"github.com/nurali/secret-server/secret-service/pkg/app"
 	"github.com/nurali/secret-server/secret-service/pkg/config"
+	"github.com/nurali/secret-server/secret-service/pkg/metric"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -40,7 +40,7 @@ func main() {
 	log.Infof("Database OK")
 
 	// setup app
-	router := app.Router(db)
+	router := app.Router(db, metric.Recorder)
 	startService(cfg.GetHttpPort(), router)
 }
 
@@ -52,6 +52,7 @@ func initLogger(logLevel string) {
 
 func startService(port int, router *mux.Router) {
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	router.Handle("/metrics", promhttp.Handler())
 	log.Infof("secret service running at:%s", addr)
 	if err := http.ListenAndServe(addr, router); err != nil {
 		log.Fatalf("failed to start secret service, error:%v", err)
