@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/nurali/secret-server/secret-service/pkg/metric"
+
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"github.com/nurali/secret-server/secret-service/pkg/app"
@@ -37,7 +39,7 @@ func TestSecretCtrl(t *testing.T) {
 	}
 
 	s := &SecretCtrlSuite{
-		Router: app.Router(db),
+		Router: app.Router(db, metric.Recorder),
 	}
 
 	suite.Run(t, s)

@@ -3,14 +3,19 @@ package metric
 import (
 	"net/http"
 	"strings"
+	"time"
 )
 
 func Recorder(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		method := r.Method
 		endpoint := extractEndpoint(r.URL.Path)
+
 		recordRequestCounter(endpoint, method)
+
+		startTime := time.Now()
 		next(w, r)
+		recordResponseTime(endpoint, method, startTime)
 	}
 }
 
