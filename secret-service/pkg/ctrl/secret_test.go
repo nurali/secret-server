@@ -72,7 +72,7 @@ func (s *SecretCtrlSuite) TestSecretCreate() {
 		assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 		respBody, err := ioutil.ReadAll(resp.Body)
 		assert.NoError(t, err)
-		assert.Contains(t, string(respBody), "Invalid expireAfterViews")
+		assert.Contains(t, string(respBody), "invalid expireAfterViews")
 	})
 }
 

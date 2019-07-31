@@ -8,6 +8,7 @@ import (
 	"time"
 
 	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/gorilla/mux"
 	"github.com/jinzhu/gorm"
@@ -21,7 +22,7 @@ type SecretCtrl interface {
 }
 
 type secretCtrl struct {
-	repo model.Repository
+	store model.SecretStore
 }
 
 type secretReq struct {
@@ -40,15 +41,13 @@ type secretResp struct {
 
 func NewSecretCtrl(db *gorm.DB) SecretCtrl {
 	return &secretCtrl{
-		repo: &model.GormRepository{DB: db},
+		store: model.NewSecretDBStore(db),
 	}
 }
 
 func ToSecret(secretIn *secretReq) *model.Secret {
-	// hash := uuid.NewV4().String()
 	now := time.Now()
 	secret := &model.Secret{
-		// Hash:           hash,
 		SecretText:     secretIn.Secret,
 		CreatedAt:      now,
 		ExpiresAt:      now.Add(time.Minute * time.Duration(secretIn.ExpireAfter)),
@@ -70,6 +69,7 @@ func ToSecretResp(secret *model.Secret) *secretResp {
 
 func (c *secretCtrl) Create(w http.ResponseWriter, r *http.Request) {
 	if r.Body == nil {
+		log.Errorf("secret body is missing")
 		http.Error(w, "Invalid secret", http.StatusBadRequest)
 		return
 	}
@@ -77,17 +77,19 @@ func (c *secretCtrl) Create(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	secretIn, err := decode(r.Body)
 	if err != nil {
+		log.Errorf("json to secret failed with error, %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if err := validateSecretReq(secretIn); err != nil {
+		log.Errorf("secret validation failed with error, %v", err)
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
 	newSecret := ToSecret(secretIn)
-	newSecret, err = c.repo.Create(newSecret)
+	newSecret, err = c.store.Create(newSecret)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -96,6 +98,7 @@ func (c *secretCtrl) Create(w http.ResponseWriter, r *http.Request) {
 	secretOut := ToSecretResp(newSecret)
 	content, err := encode(secretOut)
 	if err != nil {
+		log.Errorf("secret to json failed with error, %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -106,11 +109,12 @@ func (c *secretCtrl) Show(w http.ResponseWriter, r *http.Request) {
 	var hash uuid.UUID
 	var err error
 	if hash, err = uuid.FromString(mux.Vars(r)["hash"]); err != nil {
+		log.Errorf("secret hash conversion failed with error, %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	secret, err := c.repo.Load(hash)
+	secret, err := c.store.ReadOnce(hash)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -119,6 +123,7 @@ func (c *secretCtrl) Show(w http.ResponseWriter, r *http.Request) {
 	secretOut := ToSecretResp(secret)
 	content, err := encode(secretOut)
 	if err != nil {
+		log.Errorf("secret to json failed with error, %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -143,7 +148,7 @@ func validateSecretReq(secret *secretReq) error {
 		return nil
 	}
 	if secret.ExpireAfterViews <= 0 {
-		return errors.New("Invalid expireAfterViews, it must be greater than 0")
+		return errors.New("invalid expireAfterViews, it must be greater than 0")
 	}
 	return nil
 }
