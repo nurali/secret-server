@@ -35,7 +35,7 @@ func (c *Config) setDefaults() {
 	c.v.SetDefault(varLogLevel, "debug")
 	c.v.SetDefault(varHTTPPort, 8080)
 
-	c.v.SetDefault(varPostgresHost, "localhost")
+	c.v.SetDefault(varPostgresHost, "0.0.0.0")
 	c.v.SetDefault(varPostgresPort, 5432)
 	c.v.SetDefault(varPostgresUser, "postgres")
 	c.v.SetDefault(varPostgresPwd, "abcd1234") // TODO handle pwd

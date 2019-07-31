@@ -1,7 +1,10 @@
 package app
 
 import (
+	"time"
+
 	"github.com/jinzhu/gorm"
+	log "github.com/sirupsen/logrus"
 )
 
 // TODO move it to sql files
@@ -22,8 +25,17 @@ type DBConfig interface {
 }
 
 func OpenDB(cfg DBConfig) (*gorm.DB, error) {
-	db, err := gorm.Open("postgres", cfg.GetPostgresConnectionString())
-	return db, err
+	var err error
+	for i := 1; i <= 10; i++ {
+		db, err := gorm.Open("postgres", cfg.GetPostgresConnectionString())
+		if err != nil {
+			log.Warnf("Database not ready, retry after 1 second")
+			time.Sleep(time.Second)
+		} else {
+			return db, err
+		}
+	}
+	return nil, err
 }
 
 func SetupDB(db *gorm.DB) error {
