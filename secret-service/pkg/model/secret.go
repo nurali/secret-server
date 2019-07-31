@@ -1,6 +1,7 @@
 package model
 
 import (
+	"sync"
 	"time"
 
 	errs "github.com/pkg/errors"
@@ -11,13 +12,16 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-type Repository interface {
+type SecretStore interface {
 	Create(secret *Secret) (*Secret, error)
-	Load(hash uuid.UUID) (*Secret, error)
+	Save(secret *Secret) (*Secret, error)
+	ReadOnce(hash uuid.UUID) (*Secret, error)
+	UnreadOnce(hash uuid.UUID) (*Secret, error)
 }
 
-type GormRepository struct {
-	DB *gorm.DB
+type secretDBStore struct {
+	db        *gorm.DB
+	viewMutex *sync.Mutex
 }
 
 type Secret struct {
@@ -28,20 +32,67 @@ type Secret struct {
 	RemainingViews int
 }
 
-func (r *GormRepository) Create(secret *Secret) (*Secret, error) {
-	err := r.DB.Create(secret).Error
+func NewSecretDBStore(db *gorm.DB) SecretStore {
+	return &secretDBStore{
+		db:        db,
+		viewMutex: &sync.Mutex{},
+	}
+}
+
+func (r *secretDBStore) Create(secret *Secret) (*Secret, error) {
+	err := r.db.Create(secret).Error
 	if err != nil {
-		log.Error("failed to insert secret")
+		log.Errorf("create secret failed with error, %v", err)
 		return nil, errs.WithStack(err)
 	}
 	return secret, nil
 }
 
-func (r *GormRepository) Load(hash uuid.UUID) (*Secret, error) {
+func (r *secretDBStore) load(hash uuid.UUID) (*Secret, error) {
 	secret := Secret{}
-	tx := r.DB.Model(&Secret{}).Where("hash = ?", hash).First(&secret)
-	if tx.Error != nil {
-		return nil, tx.Error
+	err := r.db.Model(&Secret{}).Where("hash = ?", hash).First(&secret).Error
+	if err != nil {
+		log.Errorf("load secret with hash '%v' failed with error, %v", hash, err)
+		return nil, err
 	}
 	return &secret, nil
+}
+
+func (r *secretDBStore) Save(secret *Secret) (*Secret, error) {
+	err := r.db.Model(&Secret{}).Where("hash = ?", secret.Hash).Save(secret).Error
+	if err != nil {
+		log.Errorf("save secret failed with error, %v", err)
+		return nil, err
+	}
+	return secret, nil
+}
+
+func (r *secretDBStore) ReadOnce(hash uuid.UUID) (*Secret, error) {
+	r.viewMutex.Lock()
+	defer r.viewMutex.Unlock()
+
+	secret, err := r.load(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	if secret.RemainingViews > 0 {
+		secret.RemainingViews = secret.RemainingViews - 1
+	} else {
+		return nil, errs.New("no more view allowed for the secret as it had already viewed for max allowed views")
+	}
+	return r.Save(secret)
+}
+
+func (r *secretDBStore) UnreadOnce(hash uuid.UUID) (*Secret, error) {
+	r.viewMutex.Lock()
+	defer r.viewMutex.Unlock()
+
+	secret, err := r.load(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	secret.RemainingViews = secret.RemainingViews + 1
+	return r.Save(secret)
 }
